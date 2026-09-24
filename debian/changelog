@@ -1,3 +1,10 @@
+dumptales (0.1.2-1) unstable; urgency=medium
+
+  * Detect dialect and compression automatically.
+  * Fix postgres primary key detection
+
+ -- Miguel Jacq <mig@mig5.net>  Thu, 24 Sep 2026 17:26:00 +1000
+
 dumptales (0.1.1-1) unstable; urgency=medium
 
   * Fix for Pypi

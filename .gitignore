@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.so
+*.pyd
+
+# Environments and tooling
+.venv/
+venv/
+.tox/
+.nox/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build and release output
+build/
+dist/
+/setup.py
+/PKG-INFO
+/MANIFEST.in
+
+# Local editor and OS files
+.DS_Store
+*.swp
+*.swo

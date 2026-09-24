@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+ARG BASE_IMAGE=fedora:43
+FROM ${BASE_IMAGE}
+RUN dnf -y install rpm-build redhat-rpm-config findutils tar gzip rsync gcc \
+    python3-devel python3-poetry-core python3-setuptools python3-wheel python3-pytest pyproject-rpm-macros \
+    python3-rpm-macros && dnf clean all
+RUN cat > /usr/local/bin/build-rpm <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(mktemp -d)
+trap 'rm -rf "$root"' EXIT
+top="$root/rpmbuild"
+version=$(python3 - <<'PY'
+import tomllib
+with open('/src/pyproject.toml', 'rb') as stream:
+    print(tomllib.load(stream)['project']['version'])
+PY
+)
+mkdir -p "$top"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS} "$root/dumptales-$version" /out
+rsync -a --exclude .git --exclude .venv --exclude dist --exclude build \
+  --exclude '*.egg-info' --exclude __pycache__ --exclude /setup.py \
+  --exclude /PKG-INFO --exclude /MANIFEST.in --exclude '_dumptales_native*.so' \
+  --exclude '_dumptales_native*.pyd' /src/ "$root/dumptales-$version/"
+tar -C "$root" -czf "$top/SOURCES/dumptales-$version.tar.gz" "dumptales-$version"
+cp /src/rpm/dumptales.spec "$top/SPECS/"
+test "$(rpmspec -q --qf '%{VERSION}' "$top/SPECS/dumptales.spec")" = "$version"
+rpmbuild -ba "$top/SPECS/dumptales.spec" --define "_topdir $top"
+shopt -s nullglob
+cp "$top"/RPMS/*/*.rpm "$top"/SRPMS/*.src.rpm /out/
+found_main=0
+for package in /out/*.rpm; do
+  if [[ "$(rpm -qp --qf '%{NAME}' "$package")" != dumptales ]] || [[ "$package" == *.src.rpm ]]; then
+    continue
+  fi
+  found_main=1
+  contents="$(rpm -qpl "$package")"
+  if ! grep -Eq '_dumptales_native.*\.so' <<< "$contents"; then
+    echo "Native extension missing from $package; package contents:" >&2
+    printf '%s\n' "$contents" >&2
+    exit 1
+  fi
+done
+if (( ! found_main )); then
+  echo 'Main dumptales RPM was not produced' >&2
+  exit 1
+fi
+EOF
+RUN chmod +x /usr/local/bin/build-rpm
+ENTRYPOINT ["/usr/local/bin/build-rpm"]

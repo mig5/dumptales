@@ -1,0 +1,93 @@
+# Forgejo setup required:
+#   Actions variable: SECURITY_BOT_USERNAME
+#   Actions secret:   SECURITY_BOT_TOKEN (PAT with write:repository)
+# A PAT is intentional: pushes made with Forgejo's automatic workflow token do not trigger CI.
+
+name: Dependency security
+
+on:
+  schedule:
+    - cron: '37 1 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan-and-remediate:
+    runs-on: docker
+    env:
+      POETRY_VERSION: "2.4.1"
+      SYFT_VERSION: "1.52.0"
+      GRYPE_VERSION: "0.119.0"
+      BASE_BRANCH: "main"
+      SECURITY_BRANCH: "security/grype-dependency-fixes"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install system dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git gzip pipx python3 python3-venv tar
+
+      - name: Install Poetry
+        run: |
+          set -eu
+          if ! command -v pipx >/dev/null 2>&1; then
+            python3 -m pip install --user pipx
+          fi
+
+          PIPX_BIN="$(command -v pipx || true)"
+          if [ -z "$PIPX_BIN" ]; then
+            PIPX_BIN="$HOME/.local/bin/pipx"
+          fi
+
+          "$PIPX_BIN" install --python python3 "poetry==$POETRY_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          poetry --version
+          poetry --version | grep -E 'Poetry \(version 2\.'
+
+      - name: Install Syft and Grype
+        run: |
+          set -eu
+
+          case "$(uname -m)" in
+            x86_64) ARCH=amd64 ;;
+            aarch64|arm64) ARCH=arm64 ;;
+            *) echo "Unsupported runner architecture: $(uname -m)" >&2; exit 1 ;;
+          esac
+
+          install_anchore_tool() {
+            tool="$1"
+            version="$2"
+            tmpdir="$(mktemp -d)"
+            archive="${tool}_${version}_linux_${ARCH}.tar.gz"
+            base_url="https://github.com/anchore/${tool}/releases/download/v${version}"
+
+            curl -fsSL "${base_url}/${archive}" -o "${tmpdir}/${archive}"
+            curl -fsSL "${base_url}/${tool}_${version}_checksums.txt" -o "${tmpdir}/checksums.txt"
+            (
+              cd "$tmpdir"
+              grep -F "  $archive" checksums.txt | sha256sum -c -
+            )
+            tar -xzf "${tmpdir}/${archive}" -C /usr/local/bin "$tool"
+            rm -rf "$tmpdir"
+          }
+
+          install_anchore_tool syft "$SYFT_VERSION"
+          install_anchore_tool grype "$GRYPE_VERSION"
+          syft --version
+          grype --version
+
+      - name: Scan and remediate Poetry dependencies
+        env:
+          SECURITY_BOT_USERNAME: ${{ vars.SECURITY_BOT_USERNAME }}
+          SECURITY_BOT_TOKEN: ${{ secrets.SECURITY_BOT_TOKEN }}
+          CI_FORGEJO_API_URL: ${{ forgejo.api_url }}
+          CI_FORGEJO_SERVER_URL: ${{ forgejo.server_url }}
+          CI_FORGEJO_REPOSITORY: ${{ forgejo.repository }}
+        run: |
+          python3 .forgejo/scripts/grype_poetry_remediate.py

@@ -1,0 +1,79 @@
+[build-system]
+requires = ["poetry-core>=1.4,<3", "setuptools>=65"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+name = "dumptales"
+version = "0.1.0"
+description = "Read-only, explanatory diff for MySQL, PostgreSQL and SQLite snapshots"
+requires-python = ">=3.10,<3.15"
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Miguel Jacq", email = "mig@mig5.net"}]
+keywords = ["database", "sql", "dump", "diff", "mysql", "postgresql", "sqlite"]
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Database",
+]
+
+[project.scripts]
+dumptales = "dumptales:main"
+
+[tool.poetry]
+name = "dumptales"
+version = "0.1.0"
+description = "Read-only, explanatory diff for MySQL, PostgreSQL and SQLite snapshots"
+authors = ["Miguel Jacq <mig@mig5.net>"]
+readme = "README.md"
+license = "MIT"
+packages = [
+  {include = "dumptales.py"},
+  {include = "flat_backend.py"},
+  {include = "dialect_rows.py"},
+  {include = "fast_skip.py"},
+  {include = "snapshot.py"},
+]
+include = [
+  {path = "_dumptales_native*.so", format = "wheel"},
+  {path = "_dumptales_native*.pyd", format = "wheel"},
+  {path = "native.c", format = "sdist"},
+  {path = "native_build.py", format = "sdist"},
+  {path = "icon.png", format = "sdist"},
+  {path = "dumptales.desktop", format = "sdist"},
+  {path = "release.sh", format = "sdist"},
+  {path = "tests.sh", format = "sdist"},
+  {path = "Dockerfile.debbuild", format = "sdist"},
+  {path = "Dockerfile.rpmbuild", format = "sdist"},
+  {path = "debian/**", format = "sdist"},
+  {path = "rpm/**", format = "sdist"},
+  {path = "tests/**", format = "sdist"},
+  {path = "CONTRIBUTING.md", format = "sdist"},
+  {path = "RELEASING.md", format = "sdist"},
+]
+
+[tool.poetry.build]
+script = "native_build.py"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.15"
+
+[tool.poetry.group.dev.dependencies]
+setuptools = ">=65,<90"
+pytest = ">=8,<10"
+pytest-cov = ">=5,<7"
+pyinstaller = ">=6,<7"
+
+[tool.poetry.scripts]
+dumptales = "dumptales:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

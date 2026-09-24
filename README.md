@@ -18,7 +18,9 @@ Requires Python 3.10 or newer. From this directory:
 
 ```sh
 python dumptales.py old.sql new.sql --dialect mysql  # auto: stream, then partition if unordered
+python dumptales.py forgejo1.sql forgejo2.sql         # detects PostgreSQL pg_dump
 python dumptales.py old.sql.gz new.sql.gz --dialect mysql --format json > changes.json
+python dumptales.py old.sql.bz2 new.sql.bz2          # bzip2; single-file ZIP also works
 python dumptales.py old.dump new.dump --dialect postgres --format jsonl > changes.jsonl
 python dumptales.py old.sqlite new.sqlite --dialect sqlite-db --color always
 python dumptales.py snapshot old.sql snapshots/old
@@ -32,12 +34,15 @@ Formats: `human` (default), `json`, and streaming `jsonl`.
 
 Colour defaults to terminals only. `--limit N` limits detailed human output while preserving change counts. `--ignore-column NAME` excludes a column from the value comparison. `--workdir DIR` selects a location with sufficient free disk space for temporary data.
 
+`--dialect auto` is the default. It inspects both inputs and rejects unknown or mismatched formats; use an explicit `--dialect` for supported SQL that it cannot identify. Plain, gzip, bzip2 and ZIP archives containing exactly one SQL dump are read without extraction. Compression is detected from file contents, so filenames need no particular suffix. Native SQLite database files must remain uncompressed. PostgreSQL dumps should be plain-text `pg_dump` output (the default format), not PostgreSQL custom-format archives (`pg_dump -Fc`). ZIP means a conventional ZIP archive with one SQL file, not the custom `pg_dump` format.
+
 ## Inputs and scope
 
 - MySQL/MariaDB: conventional plain `mysqldump` with `CREATE TABLE` followed by `INSERT ... VALUES`, including multiple rows per statement and gzip files. Rejects unsupported value expressions, inserts before schema, and duplicate keys. Schema output compares parsed columns, primary keys and foreign keys; it does not compare indexes, triggers, views, collations or other DDL.
 - PostgreSQL: plain `pg_dump` with table definitions, `COPY ... FROM stdin`, and `ALTER TABLE ONLY ... ADD CONSTRAINT` primary/foreign keys. This reader is experimental; `INSERT`, multi-line constraints, quoted identifiers containing dots and partition-specific dump forms are not supported. It currently skips most other SQL. **Do not use it to assert equality for unfamiliar pg_dump output.** Compressed files ending `.gz` work. Its schema pass and row pass both scan the dump, and unordered rows require an additional partition pass.
 - SQLite: native `.sqlite`/`.db` files read in read-only mode. The schema representation compares columns, primary keys and foreign keys; it does not compare indexes, triggers or views. SQL text dumps are not supported yet.
 - Rows without declared primary keys are counted as skipped. Key changes show as removal and addition. Ignored columns are ignored for modified rows only. SQLite BLOBs are rendered as hex; PostgreSQL `bytea` decoding and cross-dialect comparison are outside this prototype.
+- If no primary keys are detected anywhere, the comparison fails instead of reporting a misleading zero-change result. Check the skipped-table list on other comparisons too: those tables' rows have not been compared.
 
 Relationship annotations use foreign keys declared in the *old* schema. If a removed child refers to a removed parent and the FK is `ON DELETE CASCADE`, it says "consistent with foreign-key cascade". Likewise, `SET NULL` annotations link a changed child to a removed parent. Two snapshots cannot establish which SQL operation caused the change.
 

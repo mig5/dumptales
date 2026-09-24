@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Offline, disk-backed, read-only comparison of conventional MySQL dumps."""
 import argparse
+import bz2
+import io
+import zipfile
+from contextlib import contextmanager
 import gzip
 import json
 import re
@@ -10,7 +14,7 @@ import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
-VERSION = '0.1.1'
+VERSION = '0.1.2'
 IDENT = r'`(?:``|[^`])*`'
 IDENT_RE = re.compile(IDENT)
 CREATE_RE = re.compile(r'^CREATE TABLE(?: IF NOT EXISTS)?\s+(`(?:``|[^`])*`)(?:\s*\.\s*(`(?:``|[^`])*`))?\s*\(', re.I | re.S)
@@ -28,8 +32,76 @@ class DumpError(Exception):
 def ident(s):
     return s[1:-1].replace('``', '`')
 
+@contextmanager
 def open_dump(path):
-    return gzip.open(path, 'rt', encoding='utf-8', errors='strict', newline='') if str(path).endswith('.gz') else open(path, encoding='utf-8', newline='')
+    """Open a plain, gzip, bzip2, or single-member ZIP dump as text."""
+    with open(path, 'rb') as probe:
+        magic = probe.read(4)
+    if magic.startswith(b'PK\x03\x04'):
+        with zipfile.ZipFile(path) as archive:
+            members = [m for m in archive.infolist() if not m.is_dir()]
+            if len(members) != 1:
+                raise DumpError(f'{path}: ZIP must contain exactly one dump file')
+            with archive.open(members[0]) as binary, io.TextIOWrapper(binary, encoding='utf-8', newline='') as stream:
+                yield stream
+    elif magic.startswith(b'\x1f\x8b'):
+        with gzip.open(path, 'rt', encoding='utf-8', newline='') as stream:
+            yield stream
+    elif magic.startswith(b'BZh'):
+        with bz2.open(path, 'rt', encoding='utf-8', newline='') as stream:
+            yield stream
+    else:
+        with open(path, encoding='utf-8', newline='') as stream:
+            yield stream
+
+
+def detect_dialect(path):
+    """Identify supported inputs from contents, refusing unknown SQL."""
+    if Path(path).is_dir():
+        return 'mysql'
+    with open(path, 'rb') as probe:
+        if probe.read(16).startswith(b'SQLite format 3\x00'):
+            return 'sqlite-db'
+    with open_dump(path) as stream:
+        for index, line in enumerate(stream):
+            if index >= 10000:
+                break
+            stripped = line.lstrip()
+            if 'PostgreSQL database dump' in line or stripped.startswith(('COPY public.', 'CREATE TABLE public.', 'ALTER TABLE ONLY public.')):
+                return 'postgres'
+            if stripped.startswith(('/*!', 'LOCK TABLES', 'UNLOCK TABLES')) or re.match(r'^(CREATE TABLE|INSERT INTO)\s+`', stripped, re.I):
+                return 'mysql'
+    raise DumpError(f'{path}: cannot determine SQL dialect; pass --dialect explicitly')
+
+
+def pg_statement_lines(stream):
+    """Join multiline pg_dump ALTER TABLE statements without buffering COPY data."""
+    copying = False
+    for line in stream:
+        if copying:
+            yield line
+            if line.rstrip('\r\n') == r'\.':
+                copying = False
+            continue
+        if re.match(r'^COPY\s+.+?\s*\(.*\)\s+FROM stdin;', line, re.I):
+            copying = True
+            yield line
+            continue
+        if re.match(r'^ALTER TABLE\b', line, re.I) and ';' not in line:
+            pieces = [line]
+            size = len(line)
+            for continuation in stream:
+                size += len(continuation)
+                if size > 1024 * 1024:
+                    raise DumpError('PostgreSQL ALTER TABLE statement exceeds 1 MiB')
+                pieces.append(continuation)
+                if ';' in continuation:
+                    break
+            else:
+                raise DumpError('unterminated PostgreSQL ALTER TABLE statement')
+            yield ' '.join(part.strip() for part in pieces)
+        else:
+            yield line
 
 def statements(path):
     """Stream SQL statements and PostgreSQL COPY blocks with bounded statement memory."""
@@ -290,7 +362,7 @@ def ingest_postgres(path, db, side):
     schemas = {}; counts = Counter(); copy = None
     db.execute('CREATE TEMP TABLE pg_stage (tbl TEXT, data TEXT)')
     with open_dump(path) as fh:
-        for lineno, line in enumerate(fh, 1):
+        for lineno, line in enumerate(pg_statement_lines(fh), 1):
             if copy:
                 if line.rstrip('\r\n') == r'\.': copy = None; continue
                 name, columns = copy; values = [pg_unescape(x) for x in line.rstrip('\r\n').split('\t')]
@@ -400,6 +472,8 @@ def run_flat(args):
             old, new, ca, cb = partition_compare(args.old, args.new, tmp, output, set(args.ignore_column), args.memory_limit * 1024 * 1024, skipped_fast, reader)
         skipped = sorted(t for t in set(old) | set(new) if (t in old and not old[t]['pk']) or (t in new and not new[t]['pk']))
         comparable = {t for t in set(old) & set(new) if old[t]['pk'] and old[t]['pk'] == new[t]['pk']}
+        if skipped and not any(spec['pk'] for spec in list(old.values()) + list(new.values())):
+            raise DumpError('all tables lack detected primary keys; comparison would skip every row (check the dump format and --dialect)')
         schema_events = []
         for table in sorted(set(old) | set(new)):
             if table not in old or table not in new:
@@ -496,7 +570,7 @@ def main(argv=None):
         from snapshot import main as snapshot_main
         return snapshot_main(argv[1:])
     p = argparse.ArgumentParser(description='Explain differences between two MySQL/MariaDB SQL dumps (read-only).')
-    p.add_argument('old'); p.add_argument('new'); p.add_argument('--dialect', choices=['mysql','sqlite-db','postgres'], default='mysql'); p.add_argument('--format', choices=['human','json','jsonl'], default='human')
+    p.add_argument('old'); p.add_argument('new'); p.add_argument('--dialect', choices=['auto','mysql','sqlite-db','postgres'], default='auto'); p.add_argument('--format', choices=['human','json','jsonl'], default='human')
     p.add_argument('--color', choices=['auto','always','never'], default='auto'); p.add_argument('--ignore-column', action='append', default=[])
     p.add_argument('--limit', type=int, default=200, help='Maximum human row details (counts remain complete)')
     p.add_argument('--workdir', help='Parent directory for temporary files; needs free space')
@@ -504,13 +578,26 @@ def main(argv=None):
     p.add_argument('--memory-limit', type=int, default=64, help='Approximate MiB per partition (default: 64)')
     p.add_argument('--no-fast-skip', dest='fast_skip', action='store_false', help='Fully parse identical MySQL table data; retain row totals')
     args = p.parse_args(argv)
+    try:
+        if args.dialect == 'auto':
+            old_dialect, new_dialect = detect_dialect(args.old), detect_dialect(args.new)
+            if old_dialect != new_dialect:
+                raise DumpError(f'input dialects differ: {old_dialect} and {new_dialect}')
+            args.dialect = old_dialect
+        if args.dialect == 'sqlite-db':
+            for path in (args.old, args.new):
+                with open(path, 'rb') as probe:
+                    if not probe.read(16).startswith(b'SQLite format 3\x00'):
+                        raise DumpError('SQLite input must be an uncompressed native database file')
+    except (DumpError, OSError, UnicodeError, ValueError, zipfile.BadZipFile, EOFError) as exc:
+        p.error(str(exc))
     if args.limit < 0: p.error('--limit must be nonnegative')
     if args.memory_limit < 1: p.error('--memory-limit must be positive')
     if args.engine != 'sqlite' or (args.dialect == 'mysql' and Path(args.old).is_dir()):
         from flat_backend import DumpError as FlatDumpError
         try:
             return run_flat(args)
-        except (FlatDumpError, DumpError, OSError, UnicodeError, ValueError) as ex:
+        except (FlatDumpError, DumpError, OSError, UnicodeError, ValueError, zipfile.BadZipFile, EOFError) as ex:
             print(f'dumptales: error: {ex}', file=sys.stderr)
             return 2
     try:
@@ -522,6 +609,8 @@ def main(argv=None):
             reader = {'mysql':ingest,'sqlite-db':ingest_sqlite_file,'postgres':ingest_postgres}[args.dialect]
             old, ca = reader(args.old, db, 0); new, cb = reader(args.new, db, 1)
             skipped = sorted(t for t in set(old)|set(new) if (t in old and not old[t]['pk']) or (t in new and not new[t]['pk']))
+            if skipped and not any(spec['pk'] for spec in list(old.values()) + list(new.values())):
+                raise DumpError('all tables lack detected primary keys; comparison would skip every row (check the dump format and --dialect)')
             counts = Counter(); shown = 0
             summary_base = dict(skipped_tables=skipped, old_rows=sum(v for k,v in ca.items() if not k.startswith('skipped:')), new_rows=sum(v for k,v in cb.items() if not k.startswith('skipped:')))
             color = args.color == 'always' or (args.color == 'auto' and sys.stdout.isatty())
@@ -550,7 +639,7 @@ def main(argv=None):
                 print('Summary: ' + ', '.join(f'{k}={counts.get(k,0)}' for k in ('added','removed','changed','schema')))
                 if skipped: print('Skipped tables without a primary key: ' + ', '.join(skipped), file=sys.stderr)
             return 1 if shown or skipped else 0
-    except (DumpError, OSError, UnicodeError, sqlite3.Error) as ex:
+    except (DumpError, OSError, UnicodeError, sqlite3.Error, zipfile.BadZipFile, EOFError) as ex:
         print(f'dumptales: error: {ex}', file=sys.stderr); return 2
 
 if __name__ == '__main__': sys.exit(main())

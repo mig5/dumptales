@@ -4,7 +4,7 @@ import sqlite3
 from collections import defaultdict
 from pathlib import Path
 
-from dumptales import DumpError, key_for, open_dump, pg_ident, pg_unescape, split_top
+from dumptales import DumpError, key_for, open_dump, pg_ident, pg_unescape, pg_statement_lines, split_top
 
 
 def postgres_schema(path):
@@ -12,7 +12,7 @@ def postgres_schema(path):
     schema = {}
     copying = False
     with open_dump(path) as fh:
-        for line in fh:
+        for line in pg_statement_lines(fh):
             if copying:
                 if line.rstrip('\r\n') == r'\.':
                     copying = False

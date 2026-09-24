@@ -1,4 +1,7 @@
 import json
+import bz2
+import gzip
+import zipfile
 import sqlite3
 import subprocess
 import sys
@@ -81,6 +84,50 @@ CREATE TABLE `child` (`id` int, `parent_id` int, PRIMARY KEY (`id`), CONSTRAINT 
             p=subprocess.run([sys.executable,str(CLI),str(paths[0]),str(paths[1]),'--dialect','postgres','--format','json'],capture_output=True,text=True)
             self.assertEqual(p.returncode,1,p.stderr)
             self.assertEqual(json.loads(p.stdout)['summary']['counts'],{'changed':1})
+
+    def test_multiline_postgres_keys_auto_and_compression(self):
+        with tempfile.TemporaryDirectory() as td:
+            directory = Path(td)
+            paths = [directory / f'{i}.sql' for i in range(2)]
+            for i, path in enumerate(paths):
+                path.write_text('-- PostgreSQL database dump\nCREATE TABLE public.t (\n    id integer,\n    val text\n);\n'
+                                'COPY public.t (id, val) FROM stdin;\n1\t' + ('old' if i == 0 else 'new') +
+                                '\n\\.\nALTER TABLE ONLY public.t\n    ADD CONSTRAINT t_pkey PRIMARY KEY (id);\n')
+            for engine in ('auto', 'sqlite'):
+                for extension in ('sql', 'gz', 'bz2', 'zip'):
+                    copies = []
+                    for i, path in enumerate(paths):
+                        target = directory / f'{i}.{extension}'
+                        raw = path.read_bytes()
+                        if extension == 'sql':
+                            target = path
+                        elif extension == 'gz':
+                            target.write_bytes(gzip.compress(raw))
+                        elif extension == 'bz2':
+                            target.write_bytes(bz2.compress(raw))
+                        else:
+                            with zipfile.ZipFile(target, 'w') as archive:
+                                archive.writestr('dump.sql', raw)
+                        copies.append(target)
+                    proc = subprocess.run([sys.executable, str(CLI), *map(str, copies), '--engine', engine, '--format', 'json'], capture_output=True, text=True)
+                    self.assertEqual(proc.returncode, 1, (extension, engine, proc.stderr))
+                    self.assertEqual(json.loads(proc.stdout)['summary']['counts'], {'changed': 1})
+            with zipfile.ZipFile(directory / 'bad.zip', 'w') as archive:
+                archive.writestr('a.sql', paths[0].read_bytes())
+                archive.writestr('b.sql', paths[1].read_bytes())
+            proc = subprocess.run([sys.executable, str(CLI), str(directory / 'bad.zip'), str(paths[1])], capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 2)
+            self.assertIn('exactly one dump', proc.stderr)
+
+    def test_no_detected_primary_keys_is_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'no-key.sql'
+            path.write_text('-- PostgreSQL database dump\nCREATE TABLE public.t (\n    id integer\n);\n'
+                            'COPY public.t (id) FROM stdin;\n1\n\\.\n')
+            for engine in ('auto', 'sqlite'):
+                proc = subprocess.run([sys.executable, str(CLI), str(path), str(path), '--engine', engine], capture_output=True, text=True)
+                self.assertEqual(proc.returncode, 2)
+                self.assertIn('skip every row', proc.stderr)
 
     def test_postgres_unsorted_partition_matches_index(self):
         with tempfile.TemporaryDirectory() as td:

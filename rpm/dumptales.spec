@@ -1,5 +1,5 @@
 Name:           dumptales
-Version:        0.1.0
+Version:        0.1.1
 Release:        1%{?dist}
 Summary:        Explain row and relationship changes between database snapshots
 License:        MIT
@@ -46,5 +46,7 @@ Reports row and schema changes in human-readable, JSON or JSONL form.
 %{python3_sitearch}/dumptales-*.dist-info/
 
 %changelog
+* Thu Sep 24 2026 Miguel Jacq <mig@mig5.net> - 0.1.1-1
+- Fix for Pypi.
 * Thu Sep 24 2026 Miguel Jacq <mig@mig5.net> - 0.1.0-1
 - Initial public packaging.

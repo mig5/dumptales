@@ -1,3 +1,9 @@
+dumptales (0.1.1-1) unstable; urgency=medium
+
+  * Fix for Pypi
+
+ -- Miguel Jacq <mig@mig5.net>  Thu, 24 Sep 2026 16:52:00 +1000
+
 dumptales (0.1.0-1) unstable; urgency=medium
 
   * Initial public packaging for DumpTales.

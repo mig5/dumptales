@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "dumptales"
-version = "0.1.0"
+version = "0.1.1"
 description = "Read-only, explanatory diff for MySQL, PostgreSQL and SQLite snapshots"
 requires-python = ">=3.10,<3.15"
 readme = "README.md"
@@ -27,12 +27,16 @@ classifiers = [
 [project.scripts]
 dumptales = "dumptales:main"
 
+[project.urls]
+Repository = "https://git.mig5.net/mig5/dumptales"
+
 [tool.poetry]
 name = "dumptales"
-version = "0.1.0"
+version = "0.1.1"
 description = "Read-only, explanatory diff for MySQL, PostgreSQL and SQLite snapshots"
 authors = ["Miguel Jacq <mig@mig5.net>"]
 readme = "README.md"
+repository = "https://git.mig5.net/mig5/dumptales"
 license = "MIT"
 packages = [
   {include = "dumptales.py"},
@@ -66,6 +70,8 @@ script = "native_build.py"
 python = ">=3.10,<3.15"
 
 [tool.poetry.group.dev.dependencies]
+auditwheel = ">=6,<8"
+patchelf = ">=0.17,<1"
 setuptools = ">=65,<90"
 pytest = ">=8,<10"
 pytest-cov = ">=5,<7"

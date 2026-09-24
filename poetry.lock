@@ -13,6 +13,22 @@ files = [
 ]
 
 [[package]]
+name = "auditwheel"
+version = "6.8.2"
+description = "Cross-distribution Linux wheels"
+optional = false
+python-versions = ">=3.10"
+groups = ["dev"]
+files = [
+    {file = "auditwheel-6.8.2-py3-none-any.whl", hash = "sha256:05fd2dd4b743217cd5f66066adc95b03a079424b1f0a878ad1e40fe2cdea4704"},
+    {file = "auditwheel-6.8.2.tar.gz", hash = "sha256:d007c4fd8c9c4b5113690ab0b159e05c5aa9b2d31b69efc40875826cc095594b"},
+]
+
+[package.dependencies]
+packaging = ">=20.9"
+pyelftools = ">=0.24"
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 description = "Cross-platform colored terminal text."
@@ -222,6 +238,28 @@ files = [
 ]
 
 [[package]]
+name = "patchelf"
+version = "0.19.1.0"
+description = "A small utility to modify the dynamic linker and RPATH of ELF executables."
+optional = false
+python-versions = ">=3.7"
+groups = ["dev"]
+files = [
+    {file = "patchelf-0.19.1.0-py3-none-macosx_10_9_universal2.whl", hash = "sha256:f97a0e9e657882b89d397418b76b667c0d8af7058a3775cf14c0e105e8ce3a58"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux1_i686.manylinux_2_5_i686.musllinux_1_1_i686.whl", hash = "sha256:f16f44fbcf0da4f2d1dd841d49f849fe9ea1b8fb952d5c4e9b8234f09d3f149a"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.musllinux_1_1_x86_64.whl", hash = "sha256:a8f6331ccf40c345507279f755f4a38c2cb00b9efda746fd43c17713cce0aba4"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.musllinux_1_1_aarch64.whl", hash = "sha256:b5c3dec03b89db2bb0df301d316360847eeaf72c6fb6ddde0227326655edabb4"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux2014_armv7l.manylinux_2_17_armv7l.musllinux_1_1_armv7l.whl", hash = "sha256:2ffad3734be73b83ac2f46709264a34dd2aee40a7dd5deccf84856684d606ec6"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux2014_ppc64le.manylinux_2_17_ppc64le.musllinux_1_1_ppc64le.whl", hash = "sha256:89760f542fac28c7798e5f56e66601a78ef20e088fc80a493b6a9161438b8dc5"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux2014_s390x.manylinux_2_17_s390x.musllinux_1_1_s390x.whl", hash = "sha256:efed44482d740e86d84e3f40e0ee9876c4249c7ac1128b5b1639e31287fa14a4"},
+    {file = "patchelf-0.19.1.0-py3-none-manylinux_2_31_riscv64.musllinux_1_1_riscv64.whl", hash = "sha256:c2311d99eac1b9c40f5acd673e3b3581cde320bc4647e7f997e5e063731fc438"},
+    {file = "patchelf-0.19.1.0.tar.gz", hash = "sha256:8976fbdef7d3e461d623e703024b70db6b6e3308f7e389930f39a71a1e347a2c"},
+]
+
+[package.extras]
+test = ["importlib_metadata (>=2.0)", "pytest (>=6.0)"]
+
+[[package]]
 name = "pefile"
 version = "2024.8.26"
 description = "Python PE parsing module"
@@ -249,6 +287,18 @@ files = [
 [package.extras]
 dev = ["pre-commit", "tox"]
 testing = ["coverage", "pytest", "pytest-benchmark"]
+
+[[package]]
+name = "pyelftools"
+version = "0.33"
+description = "Library for analyzing ELF files and DWARF debugging information"
+optional = false
+python-versions = ">=3.10"
+groups = ["dev"]
+files = [
+    {file = "pyelftools-0.33-py3-none-any.whl", hash = "sha256:f215ad5f47d3f1373a21496a6c9e0707c622840d0622f23ff7ce08678b020036"},
+    {file = "pyelftools-0.33.tar.gz", hash = "sha256:660d82dcbeb8e83d1702bd97f223f761625da06111c0cc988eac6b8ab0c1b61f"},
+]
 
 [[package]]
 name = "pygments"
@@ -467,4 +517,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "3b524d63bfe555f7ba2eaaa3fa456adfbabcaab12a81c5e28860571599ed3b6f"
+content-hash = "1fd747037b52fe1438de52578aab8b562a724aa9b1315f5fdf7615d4afe758df"

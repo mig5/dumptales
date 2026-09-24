@@ -10,7 +10,7 @@ import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
-VERSION = '0.1.0'
+VERSION = '0.1.1'
 IDENT = r'`(?:``|[^`])*`'
 IDENT_RE = re.compile(IDENT)
 CREATE_RE = re.compile(r'^CREATE TABLE(?: IF NOT EXISTS)?\s+(`(?:``|[^`])*`)(?:\s*\.\s*(`(?:``|[^`])*`))?\s*\(', re.I | re.S)

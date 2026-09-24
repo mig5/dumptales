@@ -1,6 +1,10 @@
 #!/bin/bash
 set -eo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+if [ "$(uname -s)" = Linux ] && ! poetry run patchelf --version >/dev/null 2>&1; then
+  echo 'patchelf is required to prepare the PyPI wheel (run poetry install --with dev)' >&2
+  exit 1
+fi
 
 bash ./tests.sh
 
@@ -10,6 +14,20 @@ fi
 
 mkdir -p dist
 poetry build
+
+# PyPI rejects the local linux_x86_64 tag on compiled wheels. Audit the
+# compiled extension and publish the repaired manylinux wheel instead.
+wheelhouse=$(mktemp -d)
+trap 'rm -rf "$wheelhouse"' EXIT
+for wheel in dist/dumptales-*-linux_*.whl; do
+  [ -f "$wheel" ] || continue
+  poetry run python -m auditwheel repair --wheel-dir "$wheelhouse" "$wheel"
+  rm "$wheel"
+done
+for wheel in "$wheelhouse"/*.whl; do
+  [ -f "$wheel" ] || continue
+  mv "$wheel" dist/
+done
 
 # A missing C compiler must fail the release rather than ship a slow wheel.
 export DUMPTALES_RELEASE_VERSION="$(poetry version -s)"

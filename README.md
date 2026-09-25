@@ -1,6 +1,6 @@
 # DumpTales
 
-![DumpTales duck and database icon](icon.png)
+<img src="icon.png" alt="DumpTales duck and database icon" width="200">
 
 Read-only, offline comparison of two database snapshots. By default it attempts a streaming merge by primary key; if input order prevents that, it compares compressed hash partitions with bounded memory.
 
